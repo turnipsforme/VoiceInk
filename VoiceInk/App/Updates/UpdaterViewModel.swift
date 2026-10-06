@@ -1,7 +1,136 @@
 import Combine
 import Foundation
-import Sparkle
 import SwiftUI
+
+#if LOCAL_BUILD
+import AppKit
+
+/// Local source builds never initialize Sparkle or install upstream's paid binaries.
+@MainActor
+final class UpdaterViewModel: NSObject, ObservableObject {
+    struct AvailableUpdate: Equatable {
+        let versionIdentifier: String
+        let displayVersion: String
+    }
+
+    private struct Release: Decodable {
+        let tag_name: String
+        let draft: Bool
+        let prerelease: Bool
+    }
+
+    @Published var canCheckForUpdates = true
+    @Published private(set) var checksForUpdatesWhenDashboardAppears: Bool
+    @Published private(set) var availableUpdate: AvailableUpdate?
+    private let defaults = UserDefaults.standard
+    private let preferenceKey = "VoiceInkChecksForUpdatesOnLaunch"
+    private let lastCheckKey = "VoiceInkLocalLastUpdateCheck"
+    private var checking = false
+
+    override init() {
+        let defaults = UserDefaults.standard
+        checksForUpdatesWhenDashboardAppears =
+            (defaults.object(forKey: "VoiceInkChecksForUpdatesOnLaunch") as? Bool)
+            ?? (defaults.object(forKey: "SUEnableAutomaticChecks") as? Bool)
+            ?? true
+        super.init()
+    }
+
+    func setChecksForUpdatesWhenDashboardAppears(_ value: Bool) {
+        checksForUpdatesWhenDashboardAppears = value
+        defaults.set(value, forKey: preferenceKey)
+        if value {
+            checkForUpdatesIfDue()
+        } else {
+            availableUpdate = nil
+        }
+    }
+
+    func checkForUpdatesIfDue() {
+        guard checksForUpdatesWhenDashboardAppears, !checking else { return }
+        if let last = defaults.object(forKey: lastCheckKey) as? Date,
+            Date().timeIntervalSince(last) >= 0,
+            Date().timeIntervalSince(last) < 14_400 { return }
+        performCheck(userInitiated: false)
+    }
+
+    func checkForUpdates() {
+        guard !checking else { return }
+        performCheck(userInitiated: true)
+    }
+
+    private func performCheck(userInitiated: Bool) {
+        checking = true
+        canCheckForUpdates = false
+        Task { @MainActor in
+            defer {
+                checking = false
+                canCheckForUpdates = true
+            }
+            do {
+                var request = URLRequest(url: URL(string:
+                    "https://api.github.com/repos/Beingpax/VoiceInk/releases/latest")!)
+                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                request.setValue("VoiceInk-Local-Source-Build", forHTTPHeaderField: "User-Agent")
+                request.timeoutInterval = 30
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw URLError(.badServerResponse)
+                }
+                let release = try JSONDecoder().decode(Release.self, from: data)
+                guard !release.draft, !release.prerelease else {
+                    throw URLError(.cannotParseResponse)
+                }
+                defaults.set(Date(), forKey: lastCheckKey)
+                let tag = Bundle.main.object(forInfoDictionaryKey: "VoiceInkUpstreamTag") as? String ?? "v0"
+                let current = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+                let latest = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
+                if latest.compare(current, options: .numeric) == .orderedDescending {
+                    availableUpdate = AvailableUpdate(
+                        versionIdentifier: release.tag_name, displayVersion: latest)
+                } else {
+                    availableUpdate = nil
+                }
+                if userInitiated { presentResult() }
+            } catch {
+                if userInitiated {
+                    let alert = NSAlert()
+                    alert.messageText = "Couldn't check for updates"
+                    alert.informativeText = "\(error.localizedDescription)\nNo changes were made. The local unlocked build remains installed."
+                    alert.runModal()
+                }
+            }
+        }
+    }
+
+    private func presentResult() {
+        let alert = NSAlert()
+        if let update = availableUpdate {
+            alert.messageText = "VoiceInk \(update.displayVersion) is available"
+            alert.informativeText = "Rebuild from the new stable source release with all Pro features enabled. The updater opens in Terminal, builds on this fork's macOS runner, and replaces VoiceInk only after verification and a backup. Settings, modes, history, and models are retained. Finish any recording before updating. Official paid app downloads are never installed."
+            alert.addButton(withTitle: "Rebuild & Install")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard let helper = Bundle.main.url(forResource: "VoiceInkLocalUpdate", withExtension: "command") else {
+                let error = NSAlert()
+                error.messageText = "Local updater is missing"
+                error.informativeText = "Run ~/Developer/VoiceInk-local/local/update-voiceink.sh in Terminal. No official update will be installed."
+                error.runModal()
+                return
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = ["-a", "Terminal", helper.path]
+            try? process.run()
+        } else {
+            alert.messageText = "VoiceInk is up to date"
+            alert.informativeText = "All Pro features are enabled in this local source build. Future updates use the same unlocked build process, not the official paid app."
+            alert.runModal()
+        }
+    }
+}
+#else
+import Sparkle
 
 @MainActor
 final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate {
@@ -151,6 +280,8 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate {
         return preference
     }
 }
+
+#endif
 
 struct CheckForUpdatesView: View {
     @ObservedObject var updaterViewModel: UpdaterViewModel

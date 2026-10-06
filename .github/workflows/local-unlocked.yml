@@ -1,0 +1,53 @@
+name: Build VoiceInk Local
+run-name: VoiceInk ${{ inputs.upstream_tag }} ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Stable upstream tag used as the source base
+        required: true
+        default: v2.21
+      request_id:
+        description: Unique local update request
+        required: true
+        default: manual
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Cache whisper framework
+        uses: actions/cache@v4
+        with:
+          path: ~/VoiceInk-Dependencies/whisper.cpp/build-apple/whisper.xcframework
+          key: whisper-macos-080bbbe85230f624f0b52127f1ae1218247989f9-xcode26-v1
+      - name: Cache Swift package downloads
+        uses: actions/cache@v4
+        with:
+          path: .local-build/SourcePackages
+          key: voiceink-spm-${{ hashFiles('VoiceInk.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: voiceink-spm-
+      - name: Build unlocked source app
+        env:
+          VOICEINK_UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -o pipefail
+          ./local/build-voiceink.sh 2>&1 | tee build.log
+      - name: Upload verified app
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceInk-local-arm64
+          path: .local-build/dist/*
+          retention-days: 90
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceInk-build-log
+          path: build.log
+          retention-days: 14

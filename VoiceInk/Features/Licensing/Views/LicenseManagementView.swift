@@ -114,7 +114,11 @@ struct LicenseManagementView: View {
 
     private var activeContent: some View {
         VStack(spacing: 14) {
+            #if LOCAL_BUILD
+            localBuildCard
+            #else
             activeLicenseCard
+            #endif
             if let message = licenseViewModel.validationMessage {
                 ValidationMessage(
                     message: message,
@@ -125,6 +129,25 @@ struct LicenseManagementView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
+
+    #if LOCAL_BUILD
+    private var localBuildCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("VoiceInk", systemImage: "checkmark.seal.fill")
+                .font(licenseTitleFont)
+            Text("All Pro features enabled — local open-source build")
+                .font(.headline)
+            Text("No license key, purchase, or trial is required. Updates rebuild the open-source app with Pro features enabled; official paid binaries are never installed.")
+                .foregroundStyle(.secondary)
+            Text("Version \(appVersion) (\(appBuild))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppMaterialCardBackground(cornerRadius: 14))
+    }
+    #endif
 
     private var purchasePanel: some View {
         VStack(alignment: .leading, spacing: 18) {

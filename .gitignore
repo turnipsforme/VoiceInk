@@ -35,6 +35,11 @@ build/
 .local-build/
 .review-build/
 .local-dependencies/
+local/.work/
+local/*.log
+local/.update-lock/
+local/__pycache__/
+
 
 # CocoaPods
 #
