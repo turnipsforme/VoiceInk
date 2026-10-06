@@ -48,6 +48,7 @@ os.chmod(backup, 0o700)
 
 def copy_tree(source, target):
     if source.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
         # APFS clone avoids duplicating model storage when supported; ditto is the fallback.
         result = subprocess.run(['/bin/cp', '-cR', str(source), str(target)], capture_output=True)
         if result.returncode:

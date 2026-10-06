@@ -17,4 +17,6 @@ assert 'releases/latest' in local_updater
 assert 'PRODUCT_BUNDLE_IDENTIFIER = com.wren.VoiceInk;' in project
 assert 'LOCAL_BUILD' in (root / 'local/build-voiceink.sh').read_text()
 assert 'SUFeedURL' in (root / 'local/build-voiceink.sh').read_text()
+onboarding = (root / 'VoiceInk/App/Migrations/OnboardingV2Migration.swift').read_text()
+assert '#if LOCAL_BUILD' in onboarding and 'defaults.data(forKey: modeConfigurationsKey) != nil' in onboarding, 'Existing-mode preservation changed'
 print('Verified: permanent local Pro entitlement, source-only updater, and compatible identity')

@@ -9,6 +9,17 @@ enum OnboardingV2Migration {
     private static let activeConfigurationIdKey = "activeConfigurationId"
 
     static func prepareIfNeeded(defaults: UserDefaults = .standard) {
+        #if LOCAL_BUILD
+        // Source upgrades must not erase an existing user's modes or onboarding settings.
+        if defaults.bool(forKey: legacyCompletedKey)
+            || defaults.data(forKey: legacyModeConfigurationsKey) != nil
+            || defaults.data(forKey: modeConfigurationsKey) != nil
+        {
+            defaults.set(true, forKey: completedKey)
+            defaults.set(true, forKey: preparedKey)
+            return
+        }
+        #endif
         defaults.removeObject(forKey: legacyCompletedKey)
 
         guard !defaults.bool(forKey: completedKey),
